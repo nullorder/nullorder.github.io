@@ -10,3 +10,7 @@
 
 # Logs
 *.log
+
+# Coding Agents
+.claude
+.pi
