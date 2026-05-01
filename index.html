@@ -1,163 +1,272 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Null Order</title>
-<meta name="description" content="An open community for the curious.">
-<link rel="icon" type="image/png" href="favicon.png">
-<link rel="apple-touch-icon" href="nullorder.png">
-<meta property="og:title" content="Null Order">
-<meta property="og:description" content="An open community for the curious.">
-<meta property="og:image" content="og-image.png">
-<meta property="og:type" content="website">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Null Order">
-<meta name="twitter:description" content="An open community for the curious.">
-<meta name="twitter:image" content="og-image.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Silkscreen&display=swap" rel="stylesheet">
-<style>
-  html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:'Silkscreen',monospace;color:#fff}
-  canvas{display:block;width:100%;height:100%}
-  a.x{position:fixed;left:50%;top:78%;transform:translate(-50%,-50%);color:#fff;text-decoration:none;font-size:28px;font-family:'Silkscreen',monospace;z-index:1;opacity:0;transition:opacity .8s ease}
-  a.x.show{opacity:1}
-  a.x:hover{opacity:.7}
-</style>
-</head>
-<body>
-<canvas id="c"></canvas>
-<a class="x" href="https://x.com/orderofnull" target="_blank" rel="noopener">𝕏</a>
-<script>
-(() => {
-  const c = document.getElementById('c');
-  const ctx = c.getContext('2d');
-  const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.';
-  const FILL_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  const TITLE = 'NULLORDER';
-  const TAGLINE = 'An open community for the curious';
-  const TAGLINE_OFFSET = 3; // empty-row gap below title before tagline starts
-  const CELL = 28; // css px per character cell
-  const FLIP_MS = 45; // time per flap step
-  const BLACKOUT_START = 2500; // ms after load before non-target cells start going black
-  const BLACKOUT_DURATION = 6000; // ms over which they all go black
-  const xLink = document.querySelector('a.x');
-  let W, H, cols, rows, cells, startX, startY, t0, xShown;
-
-  function init() {
-    const dpr = devicePixelRatio || 1;
-    W = innerWidth;
-    H = innerHeight;
-    c.width = W * dpr;
-    c.height = H * dpr;
-    c.style.width = W + 'px';
-    c.style.height = H + 'px';
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    cols = Math.floor(W / CELL);
-    rows = Math.floor(H / CELL);
-    startX = (W - cols * CELL) / 2;
-    startY = (H - rows * CELL) / 2;
-
-    // Build a map of target positions → character. Title at 40% from top, tagline
-    // word-wrapped to fit the viewport and centered below it.
-    const baseRow = (rows * 0.4) | 0;
-    const targets = new Map();
-    const place = (text, r) => {
-      const cStart = ((cols - text.length) / 2) | 0;
-      for (let i = 0; i < text.length; i++) {
-        // Leave spaces as regular fill cells so they black out into real gaps
-        // instead of resolving to a stray character.
-        if (text[i] === ' ') continue;
-        targets.set(r * cols + (cStart + i), text[i]);
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Null Order</title>
+    <meta name="description" content="An open community for the curious." />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <link rel="apple-touch-icon" href="nullorder.png" />
+    <meta property="og:title" content="Null Order" />
+    <meta
+      property="og:description"
+      content="An open community for the curious."
+    />
+    <meta property="og:image" content="og-image.png" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Null Order" />
+    <meta
+      name="twitter:description"
+      content="An open community for the curious."
+    />
+    <meta name="twitter:image" content="og-image.png" />
+    <link
+      rel="preload"
+      href="fonts/Pixelspace-Regular.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <style>
+      @font-face {
+        font-family: "Pixelspace";
+        src: url("fonts/Pixelspace-Regular.woff2") format("woff2");
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
       }
-    };
-    place(TITLE, baseRow);
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+        font-family: "Pixelspace", monospace;
+        color: #fff;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      a.x {
+        position: fixed;
+        left: 50%;
+        top: 78%;
+        transform: translate(-50%, -50%);
+        color: #fff;
+        text-decoration: none;
+        font-size: 40px;
+        font-family: "Pixelspace", monospace;
+        z-index: 1;
+        opacity: 0;
+        transition: opacity 0.8s ease;
+      }
+      a.x.show {
+        opacity: 1;
+      }
+      a.x:hover {
+        opacity: 0.7;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <a class="x" href="https://x.com/orderofnull" target="_blank" rel="noopener"
+      >𝕏</a
+    >
+    <script>
+      (() => {
+        const c = document.getElementById("c");
+        const ctx = c.getContext("2d");
+        const off = document.createElement("canvas");
+        const offCtx = off.getContext("2d", { willReadFrequently: true });
+        const TITLE = "NULLORDER";
+        const TAGLINE = "An Open Guild";
+        const CELL = 14; // css px per pixel-cell (each "box" of the letter)
+        const BLOCK_RATIO = 0.78; // visible box is BLOCK_RATIO * CELL, rest is gap
+        const FLICKER_MIN = 60; // ms between random flickers
+        const FLICKER_MAX = 180;
+        const SETTLE_START = 1100; // ms after load before cells start locking in
+        const SETTLE_DURATION = 4200;
+        const TITLE_TAGLINE_GAP = 4; // empty pixel-rows between title and tagline
+        const LINE_GAP = 2; // empty pixel-rows between wrapped tagline lines
+        const xLink = document.querySelector("a.x");
+        let W, H, cols, rows, cells, originX, originY, t0, xShown;
 
-    const maxWidth = Math.max(8, cols - 4);
-    const wrapped = [];
-    let cur = '';
-    for (const word of TAGLINE.split(' ')) {
-      if (!cur) { cur = word; }
-      else if (cur.length + 1 + word.length <= maxWidth) { cur += ' ' + word; }
-      else { wrapped.push(cur); cur = word; }
-    }
-    if (cur) wrapped.push(cur);
-    for (let li = 0; li < wrapped.length; li++) {
-      place(wrapped[li], baseRow + TAGLINE_OFFSET + li);
-    }
-
-    cells = new Array(cols * rows);
-    for (let y = 0; y < rows; y++) {
-      for (let x = 0; x < cols; x++) {
-        const key = y * cols + x;
-        let isTarget = false;
-        let target;
-        if (targets.has(key)) {
-          target = targets.get(key);
-          isTarget = true;
-        } else {
-          // Non-target cells settle on a random letter (so the whole board reads
-          // as a wall of characters, then individually blacks out later).
-          target = FILL_CHARS[(Math.random() * FILL_CHARS.length) | 0];
+        // Render `text` in Pixelspace at its native 7-px grid into the offscreen
+        // canvas, then read pixels back as a tight 0/1 bitmap.
+        function sample(text) {
+          const SIZE = 7; // native grid height
+          const PAD = 2;
+          offCtx.font = SIZE + "px 'Pixelspace', monospace";
+          const m = offCtx.measureText(text);
+          const pw = Math.ceil(m.width) + PAD * 2;
+          const ph = SIZE * 2 + PAD * 2;
+          off.width = pw;
+          off.height = ph;
+          offCtx.fillStyle = "#000";
+          offCtx.fillRect(0, 0, pw, ph);
+          offCtx.fillStyle = "#fff";
+          offCtx.font = SIZE + "px 'Pixelspace', monospace";
+          offCtx.textBaseline = "top";
+          offCtx.fillText(text, PAD, PAD);
+          const data = offCtx.getImageData(0, 0, pw, ph).data;
+          let minX = pw,
+            maxX = -1,
+            minY = ph,
+            maxY = -1;
+          for (let y = 0; y < ph; y++) {
+            for (let x = 0; x < pw; x++) {
+              if (data[(y * pw + x) * 4] > 96) {
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+              }
+            }
+          }
+          if (maxX < 0) return { w: 0, h: 0, bits: [] };
+          const w = maxX - minX + 1,
+            h = maxY - minY + 1;
+          const bits = new Uint8Array(w * h);
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              bits[y * w + x] =
+                data[((y + minY) * pw + (x + minX)) * 4] > 96 ? 1 : 0;
+            }
+          }
+          return { w, h, bits };
         }
-        const targetIdx = CHARS.indexOf(target);
-        const startIdx = (Math.random() * CHARS.length) | 0;
-        const distance = (targetIdx - startIdx + CHARS.length) % CHARS.length;
-        // Extra full cycles must be whole multiples of CHARS.length so we land on target.
-        const flips = distance + CHARS.length * (1 + ((Math.random() * 3) | 0));
-        cells[y * cols + x] = {
-          idx: startIdx,
-          flipsLeft: flips,
-          nextAt: 200 + Math.random() * 1500,
-          isTarget,
-          // When this non-target cell goes black, randomly distributed over the blackout window
-          blackAt: isTarget ? Infinity : BLACKOUT_START + Math.random() * BLACKOUT_DURATION,
-          black: false,
-        };
-      }
-    }
-    t0 = performance.now();
-    xShown = false;
-    if (xLink) xLink.classList.remove('show');
-  }
 
-  function frame(now) {
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#fff';
-    ctx.font = Math.floor(CELL * 0.8) + "px 'Silkscreen', monospace";
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    const elapsed = now - t0;
-    let allTargetsDone = true;
-    for (let y = 0; y < rows; y++) {
-      for (let x = 0; x < cols; x++) {
-        const cc = cells[y * cols + x];
-        if (cc.flipsLeft > 0 && now >= cc.nextAt) {
-          cc.idx = (cc.idx + 1) % CHARS.length;
-          cc.flipsLeft--;
-          cc.nextAt = now + FLIP_MS + Math.random() * 30;
+        function wrap(text, maxW) {
+          const words = text.split(" ");
+          const lines = [];
+          let cur = "";
+          for (const word of words) {
+            const trial = cur ? cur + " " + word : word;
+            if (sample(trial).w > maxW && cur) {
+              lines.push(cur);
+              cur = word;
+            } else {
+              cur = trial;
+            }
+          }
+          if (cur) lines.push(cur);
+          return lines;
         }
-        if (cc.isTarget && cc.flipsLeft > 0) allTargetsDone = false;
-        if (!cc.black && elapsed >= cc.blackAt) cc.black = true;
-        if (cc.black) continue;
-        const ch = CHARS[cc.idx];
-        ctx.fillText(ch, startX + x * CELL + CELL / 2, startY + y * CELL + CELL / 2);
-      }
-    }
-    if (!xShown && allTargetsDone) {
-      xShown = true;
-      if (xLink) xLink.classList.add('show');
-    }
-    requestAnimationFrame(frame);
-  }
 
-  addEventListener('resize', init);
-  document.fonts.ready.then(() => { init(); requestAnimationFrame(frame); });
-})();
-</script>
-</body>
+        function stamp(targets, bm, row, cols) {
+          const startCol = Math.floor((cols - bm.w) / 2);
+          for (let y = 0; y < bm.h; y++) {
+            for (let x = 0; x < bm.w; x++) {
+              if (bm.bits[y * bm.w + x]) {
+                targets.add((row + y) * cols + (startCol + x));
+              }
+            }
+          }
+        }
+
+        function init() {
+          const dpr = devicePixelRatio || 1;
+          W = innerWidth;
+          H = innerHeight;
+          c.width = W * dpr;
+          c.height = H * dpr;
+          c.style.width = W + "px";
+          c.style.height = H + "px";
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+          cols = Math.floor(W / CELL);
+          rows = Math.floor(H / CELL);
+          originX = (W - cols * CELL) / 2;
+          originY = (H - rows * CELL) / 2;
+
+          const targets = new Set();
+          const title = sample(TITLE);
+          const taglineMaxW = Math.max(20, cols - 6);
+          const lines = wrap(TAGLINE, taglineMaxW).map(sample);
+
+          // Vertically center the whole title+tagline block around 45% from top.
+          const totalH =
+            title.h +
+            TITLE_TAGLINE_GAP +
+            lines.reduce((s, l, i) => s + l.h + (i ? LINE_GAP : 0), 0);
+          let row = Math.max(0, Math.floor(rows * 0.45 - totalH / 2));
+          stamp(targets, title, row, cols);
+          row += title.h + TITLE_TAGLINE_GAP;
+          for (let i = 0; i < lines.length; i++) {
+            stamp(targets, lines[i], row, cols);
+            row += lines[i].h + LINE_GAP;
+          }
+
+          cells = new Array(cols * rows);
+          for (let i = 0; i < cells.length; i++) {
+            const isTarget = targets.has(i);
+            cells[i] = {
+              on: Math.random() < 0.5,
+              nextFlip: 200 + Math.random() * 1400,
+              isTarget,
+              settleAt: SETTLE_START + Math.random() * SETTLE_DURATION,
+              settled: false,
+            };
+          }
+          t0 = performance.now();
+          xShown = false;
+          if (xLink) xLink.classList.remove("show");
+        }
+
+        function frame(now) {
+          ctx.fillStyle = "#000";
+          ctx.fillRect(0, 0, W, H);
+          ctx.fillStyle = "#fff";
+
+          const elapsed = now - t0;
+          const block = Math.floor(CELL * BLOCK_RATIO);
+          const inset = Math.floor((CELL - block) / 2);
+          let allSettled = true;
+          for (let y = 0; y < rows; y++) {
+            for (let x = 0; x < cols; x++) {
+              const cc = cells[y * cols + x];
+              if (!cc.settled) {
+                if (now >= cc.nextFlip) {
+                  cc.on = Math.random() < 0.5;
+                  cc.nextFlip =
+                    now +
+                    FLICKER_MIN +
+                    Math.random() * (FLICKER_MAX - FLICKER_MIN);
+                }
+                if (elapsed >= cc.settleAt) {
+                  cc.settled = true;
+                  cc.on = cc.isTarget;
+                } else {
+                  allSettled = false;
+                }
+              }
+              if (cc.on) {
+                ctx.fillRect(
+                  originX + x * CELL + inset,
+                  originY + y * CELL + inset,
+                  block,
+                  block,
+                );
+              }
+            }
+          }
+          if (!xShown && allSettled) {
+            xShown = true;
+            if (xLink) xLink.classList.add("show");
+          }
+          requestAnimationFrame(frame);
+        }
+
+        addEventListener("resize", init);
+        document.fonts.ready.then(() => {
+          init();
+          requestAnimationFrame(frame);
+        });
+      })();
+    </script>
+  </body>
 </html>
