@@ -50,32 +50,65 @@
         width: 100%;
         height: 100%;
       }
-      a.x {
+      .social {
         position: fixed;
         left: 50%;
         top: 78%;
         transform: translate(-50%, -50%);
-        color: #fff;
-        text-decoration: none;
-        font-size: 40px;
-        font-family: "Pixelspace", monospace;
+        display: flex;
+        align-items: center;
+        gap: 26px;
         z-index: 1;
         opacity: 0;
         transition: opacity 0.8s ease;
       }
-      a.x.show {
+      .social.show {
         opacity: 1;
       }
-      a.x:hover {
+      .social a {
+        display: inline-flex;
+        align-items: center;
+        color: #fff;
+        text-decoration: none;
+        font-size: 40px;
+        line-height: 1;
+        font-family: "Pixelspace", monospace;
+        transition: opacity 0.2s ease;
+      }
+      .social a:hover {
         opacity: 0.7;
+      }
+      .social svg {
+        display: block;
+        height: 30px;
+        width: auto;
+        fill: currentColor;
       }
     </style>
   </head>
   <body>
     <canvas id="c"></canvas>
-    <a class="x" href="https://x.com/orderofnull" target="_blank" rel="noopener"
-      >𝕏</a
-    >
+    <div class="social">
+      <a
+        href="https://x.com/orderofnull"
+        target="_blank"
+        rel="noopener"
+        aria-label="X"
+        >𝕏</a
+      >
+      <a
+        href="https://discord.gg/AJMEeFXxXy"
+        target="_blank"
+        rel="noopener"
+        aria-label="Discord"
+      >
+        <svg viewBox="0 0 127.14 96.36" role="img" aria-hidden="true">
+          <path
+            d="M107.7 8.07A105.15 105.15 0 0 0 81.47 0a72.06 72.06 0 0 0-3.36 6.83 97.68 97.68 0 0 0-29.11 0A72.37 72.37 0 0 0 45.64 0a105.89 105.89 0 0 0-26.25 8.09C2.79 32.65-1.71 56.6.54 80.21a105.73 105.73 0 0 0 32.17 16.15 77.7 77.7 0 0 0 6.89-11.11 68.42 68.42 0 0 1-10.85-5.18c.91-.66 1.8-1.34 2.66-2a75.57 75.57 0 0 0 64.32 0c.87.71 1.76 1.39 2.66 2a68.68 68.68 0 0 1-10.87 5.19 77 77 0 0 0 6.89 11.1 105.25 105.25 0 0 0 32.19-16.14c2.64-27.38-4.51-51.11-18.9-72.15ZM42.45 65.69C36.18 65.69 31 60 31 53s5-12.74 11.43-12.74S54 46 53.89 53s-5.05 12.69-11.44 12.69Zm42.24 0C78.41 65.69 73.25 60 73.25 53s5-12.74 11.44-12.74S96.23 46 96.12 53s-5.04 12.69-11.43 12.69Z"
+          />
+        </svg>
+      </a>
+    </div>
     <script>
       (() => {
         const c = document.getElementById("c");
@@ -92,8 +125,8 @@
         const SETTLE_DURATION = 4200;
         const TITLE_TAGLINE_GAP = 4; // empty pixel-rows between title and tagline
         const LINE_GAP = 2; // empty pixel-rows between wrapped tagline lines
-        const xLink = document.querySelector("a.x");
-        let W, H, cols, rows, cells, originX, originY, t0, xShown;
+        const xLink = document.querySelector(".social");
+        let W, H, cols, rows, cells, originX, originY, t0, xShown, blockTile;
 
         // Render `text` in Pixelspace at its native 7-px grid into the offscreen
         // canvas, then read pixels back as a tight 0/1 bitmap.
@@ -168,8 +201,41 @@
           }
         }
 
+        // Pre-render the Pixelspace full-block glyph (U+2588) once into an
+        // offscreen tile. In this font the block is itself a 5x7 grid of pixel
+        // dots, so each lit cell becomes a real Pixelspace "pixel" rather than a
+        // flat square. Cached as a bitmap so the per-frame cost stays a cheap
+        // drawImage instead of thousands of fillText calls.
+        function buildBlockTile() {
+          const dpr = devicePixelRatio || 1;
+          const block = Math.floor(CELL * BLOCK_RATIO);
+          const px = Math.max(1, Math.round(block * dpr));
+          blockTile = document.createElement("canvas");
+          blockTile.width = px;
+          blockTile.height = px;
+          const g = blockTile.getContext("2d");
+          // Glyph ink box in font units (Pixelspace-Regular):
+          // x:[0,610], y:[-235,625], unitsPerEm 875.
+          const EM = 875,
+            INK_W = 610,
+            INK_H = 860,
+            TOP = 625,
+            FS = 100;
+          g.font = FS + "px 'Pixelspace', monospace";
+          g.textAlign = "left";
+          g.textBaseline = "alphabetic";
+          g.fillStyle = "#fff";
+          const inkW = (INK_W * FS) / EM;
+          const inkH = (INK_H * FS) / EM;
+          const top = (TOP * FS) / EM;
+          // Stretch the glyph's ink box to fill the square tile.
+          g.setTransform(px / inkW, 0, 0, px / inkH, 0, 0);
+          g.fillText("█", 0, top);
+        }
+
         function init() {
           const dpr = devicePixelRatio || 1;
+          buildBlockTile();
           W = innerWidth;
           H = innerHeight;
           c.width = W * dpr;
@@ -245,7 +311,8 @@
                 }
               }
               if (cc.on) {
-                ctx.fillRect(
+                ctx.drawImage(
+                  blockTile,
                   originX + x * CELL + inset,
                   originY + y * CELL + inset,
                   block,
