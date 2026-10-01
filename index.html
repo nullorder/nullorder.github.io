@@ -57,7 +57,7 @@
         transform: translate(-50%, -50%);
         display: flex;
         align-items: center;
-        gap: 26px;
+        gap: 10px;
         z-index: 1;
         opacity: 0;
         transition: opacity 0.8s ease;
@@ -73,10 +73,14 @@
         font-size: 40px;
         line-height: 1;
         font-family: "Pixelspace", monospace;
+        padding: 8px; /* roomier tap target */
         transition: opacity 0.2s ease;
+        -webkit-tap-highlight-color: transparent;
       }
-      .social a:hover {
-        opacity: 0.7;
+      @media (hover: hover) {
+        .social a:hover {
+          opacity: 0.7;
+        }
       }
       .social svg {
         display: block;
@@ -115,10 +119,15 @@
         const ctx = c.getContext("2d");
         const off = document.createElement("canvas");
         const offCtx = off.getContext("2d", { willReadFrequently: true });
-        const TITLE = "NULLORDER";
+        const TITLE = ["NULLORDER"];
+        const TITLE_SPLIT = ["NULL", "ORDER"]; // stacked title for narrow screens
         const TAGLINE = "An Open Guild";
-        const CELL = 14; // css px per pixel-cell (each "box" of the letter)
-        const BLOCK_RATIO = 0.78; // visible box is BLOCK_RATIO * CELL, rest is gap
+        const CELL_MAX = 14; // css px per pixel-cell (each "box" of the letter)
+        const CELL_MIN = 4;
+        const CELL_SPLIT = 10; // below this cell size, try the stacked title
+        const MARGIN = 2; // empty cells kept on each side of the text
+        const SOCIAL_SPACE = 88; // css px reserved under the text for the links
+        const BLOCK_RATIO = 0.78; // visible box is BLOCK_RATIO * cell, rest is gap
         const FLICKER_MIN = 60; // ms between random flickers
         const FLICKER_MAX = 180;
         const SETTLE_START = 1100; // ms after load before cells start locking in
@@ -126,7 +135,8 @@
         const TITLE_TAGLINE_GAP = 4; // empty pixel-rows between title and tagline
         const LINE_GAP = 2; // empty pixel-rows between wrapped tagline lines
         const xLink = document.querySelector(".social");
-        let W, H, cols, rows, cells, originX, originY, t0, xShown, blockTile;
+        let W, H, cell, cols, rows, cells, originX, originY, t0, xShown, blockTile;
+        let raf = 0;
 
         // Render `text` in Pixelspace at its native 7-px grid into the offscreen
         // canvas, then read pixels back as a tight 0/1 bitmap.
@@ -194,11 +204,50 @@
           const startCol = Math.floor((cols - bm.w) / 2);
           for (let y = 0; y < bm.h; y++) {
             for (let x = 0; x < bm.w; x++) {
-              if (bm.bits[y * bm.w + x]) {
-                targets.add((row + y) * cols + (startCol + x));
-              }
+              const gx = startCol + x,
+                gy = row + y;
+              // Clip instead of letting overflow wrap onto the next grid row.
+              if (gx < 0 || gx >= cols || gy < 0 || gy >= rows) continue;
+              if (bm.bits[y * bm.w + x]) targets.add(gy * cols + gx);
             }
           }
+        }
+
+        function stackHeight(lines) {
+          return lines.reduce((s, l, i) => s + l.h + (i ? LINE_GAP : 0), 0);
+        }
+
+        // Try to lay the title + tagline out on a grid of `size`-px cells.
+        // Returns null when something would overflow, unless `force` is set.
+        function layout(titleLines, size, force) {
+          const c = Math.floor(W / size);
+          const maxW = Math.max(1, c - MARGIN * 2);
+          const title = titleLines.map(sample);
+          const tagline = wrap(TAGLINE, maxW).map(sample);
+          const h = stackHeight(title) + TITLE_TAGLINE_GAP + stackHeight(tagline);
+          const fits =
+            title.concat(tagline).every((l) => l.w <= maxW) &&
+            (h + MARGIN) * size + SOCIAL_SPACE <= H;
+          if (!fits && !force) return null;
+          return { size, title, tagline, h };
+        }
+
+        // Largest cell size at which `titleLines` fits the viewport.
+        function fit(titleLines) {
+          for (let s = CELL_MAX; s >= CELL_MIN; s--) {
+            const l = layout(titleLines, s);
+            if (l) return l;
+          }
+          return layout(titleLines, CELL_MIN, true);
+        }
+
+        // Prefer the one-line title; stack it when that buys noticeably
+        // bigger cells (phones in portrait).
+        function chooseLayout() {
+          const one = fit(TITLE);
+          if (one.size >= CELL_SPLIT) return one;
+          const two = fit(TITLE_SPLIT);
+          return two.size > one.size ? two : one;
         }
 
         // Pre-render the Pixelspace full-block glyph (U+2588) once into an
@@ -208,7 +257,7 @@
         // drawImage instead of thousands of fillText calls.
         function buildBlockTile() {
           const dpr = devicePixelRatio || 1;
-          const block = Math.floor(CELL * BLOCK_RATIO);
+          const block = Math.floor(cell * BLOCK_RATIO);
           const px = Math.max(1, Math.round(block * dpr));
           blockTile = document.createElement("canvas");
           blockTile.width = px;
@@ -233,9 +282,11 @@
           g.fillText("█", 0, top);
         }
 
-        function init() {
+        // `restart` replays the intro; otherwise (e.g. a resize, or a mobile
+        // URL bar collapsing) the grid is rebuilt on the original timeline, so
+        // cells that had already locked in stay locked in.
+        function init(restart) {
           const dpr = devicePixelRatio || 1;
-          buildBlockTile();
           W = innerWidth;
           H = innerHeight;
           c.width = W * dpr;
@@ -244,27 +295,36 @@
           c.style.height = H + "px";
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-          cols = Math.floor(W / CELL);
-          rows = Math.floor(H / CELL);
-          originX = (W - cols * CELL) / 2;
-          originY = (H - rows * CELL) / 2;
+          const lay = chooseLayout();
+          cell = lay.size;
+          buildBlockTile();
+          cols = Math.floor(W / cell);
+          rows = Math.floor(H / cell);
+          originX = (W - cols * cell) / 2;
+          originY = (H - rows * cell) / 2;
 
+          // Vertically center the whole title+tagline block around 45% from
+          // top, but keep room underneath for the social links.
+          const maxRow = Math.floor((H - originY - SOCIAL_SPACE) / cell) - lay.h;
+          let row = Math.max(
+            Math.min(MARGIN, Math.max(0, maxRow)),
+            Math.min(maxRow, Math.floor(rows * 0.45 - lay.h / 2)),
+          );
           const targets = new Set();
-          const title = sample(TITLE);
-          const taglineMaxW = Math.max(20, cols - 6);
-          const lines = wrap(TAGLINE, taglineMaxW).map(sample);
+          const blocks = [lay.title, lay.tagline];
+          for (let b = 0; b < blocks.length; b++) {
+            if (b) row += TITLE_TAGLINE_GAP - LINE_GAP;
+            for (const line of blocks[b]) {
+              stamp(targets, line, row, cols);
+              row += line.h + LINE_GAP;
+            }
+          }
+          row -= LINE_GAP;
 
-          // Vertically center the whole title+tagline block around 45% from top.
-          const totalH =
-            title.h +
-            TITLE_TAGLINE_GAP +
-            lines.reduce((s, l, i) => s + l.h + (i ? LINE_GAP : 0), 0);
-          let row = Math.max(0, Math.floor(rows * 0.45 - totalH / 2));
-          stamp(targets, title, row, cols);
-          row += title.h + TITLE_TAGLINE_GAP;
-          for (let i = 0; i < lines.length; i++) {
-            stamp(targets, lines[i], row, cols);
-            row += lines[i].h + LINE_GAP;
+          // Links sit midway between the text and the bottom edge.
+          if (xLink) {
+            const textBottom = originY + row * cell;
+            xLink.style.top = (textBottom + H) / 2 + "px";
           }
 
           cells = new Array(cols * rows);
@@ -278,9 +338,12 @@
               settled: false,
             };
           }
-          t0 = performance.now();
-          xShown = false;
-          if (xLink) xLink.classList.remove("show");
+          if (restart) {
+            t0 = performance.now();
+            xShown = false;
+            if (xLink) xLink.classList.remove("show");
+          }
+          if (!raf) raf = requestAnimationFrame(frame);
         }
 
         function frame(now) {
@@ -289,8 +352,8 @@
           ctx.fillStyle = "#fff";
 
           const elapsed = now - t0;
-          const block = Math.floor(CELL * BLOCK_RATIO);
-          const inset = Math.floor((CELL - block) / 2);
+          const block = Math.floor(cell * BLOCK_RATIO);
+          const inset = Math.floor((cell - block) / 2);
           let allSettled = true;
           for (let y = 0; y < rows; y++) {
             for (let x = 0; x < cols; x++) {
@@ -313,8 +376,8 @@
               if (cc.on) {
                 ctx.drawImage(
                   blockTile,
-                  originX + x * CELL + inset,
-                  originY + y * CELL + inset,
+                  originX + x * cell + inset,
+                  originY + y * cell + inset,
                   block,
                   block,
                 );
@@ -325,14 +388,17 @@
             xShown = true;
             if (xLink) xLink.classList.add("show");
           }
-          requestAnimationFrame(frame);
+          // Stop once everything has locked in; the canvas keeps its last frame.
+          raf = allSettled ? 0 : requestAnimationFrame(frame);
         }
 
-        addEventListener("resize", init);
-        document.fonts.ready.then(() => {
-          init();
-          requestAnimationFrame(frame);
+        let resizeTimer;
+        addEventListener("resize", () => {
+          clearTimeout(resizeTimer);
+          if (t0 === undefined) return; // fonts not ready yet; first init will size it
+          resizeTimer = setTimeout(() => init(false), 100);
         });
+        document.fonts.ready.then(() => init(true));
       })();
     </script>
   </body>
