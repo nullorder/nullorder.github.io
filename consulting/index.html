@@ -4,25 +4,16 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Consulting · Null Order</title>
-    <meta
-      name="description"
-      content="Null Order takes on a small number of hard projects. AI, open source, open research, protocols, WebAssembly. Built by guild members, owned by you."
-    />
+    <meta name="description" content="Null Order takes on a small number of hard projects. AI, open source, open research, protocols, WebAssembly. Built by guild members, owned by you." />
     <link rel="icon" type="image/png" href="../favicon.png" />
     <link rel="apple-touch-icon" href="../nullorder.png" />
     <meta property="og:title" content="Consulting · Null Order" />
-    <meta
-      property="og:description"
-      content="Open to projects. Hard problems, built by guild members, owned by you."
-    />
+    <meta property="og:description" content="Open to projects. Hard problems, built by guild members, owned by you." />
     <meta property="og:image" content="../og-image.png" />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Consulting · Null Order" />
-    <meta
-      name="twitter:description"
-      content="Open to projects. Hard problems, built by guild members, owned by you."
-    />
+    <meta name="twitter:description" content="Open to projects. Hard problems, built by guild members, owned by you." />
     <meta name="twitter:image" content="../og-image.png" />
     <link
       rel="preload"
@@ -141,7 +132,6 @@
         font-size: 24px;
         line-height: 1.45;
         letter-spacing: -0.01em;
-        max-width: 34ch;
         margin: 40px 0 0;
       }
       .lead em {
@@ -222,7 +212,6 @@
         grid-column: 2;
         color: var(--dim);
         margin: 12px 0 0;
-        max-width: 60ch;
       }
       h3 {
         font-family: var(--px);
@@ -409,7 +398,6 @@
       }
       .cta p.sub {
         color: var(--dim);
-        max-width: 46ch;
         margin: 0 auto;
       }
       .cta .actions {
@@ -430,7 +418,14 @@
       }
       footer nav {
         display: flex;
+        align-items: center;
         gap: 24px;
+      }
+      footer svg {
+        display: block;
+        height: 13px;
+        width: auto;
+        fill: currentColor;
       }
       footer a {
         text-decoration: none;
@@ -552,9 +547,7 @@
           <p class="eyebrow">Null Order · Consulting</p>
           <h1 class="sr">Consulting</h1>
           <div class="px-title" aria-hidden="true"><canvas id="px"></canvas></div>
-          <p class="lead">
-            We take on a small number of hard problems and build them properly. <em>Guild members, one team, and you own everything we make.</em>
-          </p>
+          <p class="lead">We take on a small number of hard problems and build them properly. <em>Guild members, one team, and you own everything we make.</em></p>
           <div class="actions">
             <a class="btn" href="https://cal.com/anirudha" target="_blank" rel="noopener">BOOK A CALL <span class="arr">&gt;</span></a>
             <span class="alt">or write to <a href="mailto:hello@nullorder.org">hello@nullorder.org</a></span>
@@ -709,8 +702,8 @@
         </section>
 
         <section class="cta" aria-labelledby="h-cta">
-          <h2 id="h-cta" class="big">Come build<br />something<span>.</span></h2>
-          <p class="sub">Bring a problem, half an idea, or a system that keeps you up at night. The first call is free and there is no pitch deck.</p>
+          <h2 id="h-cta" class="big">Come build something<span>.</span></h2>
+          <p class="sub">Bring a problem, half an idea, or a system that keeps you up at night.</p>
           <div class="actions">
             <a class="btn" href="https://cal.com/anirudha" target="_blank" rel="noopener">BOOK A 30 MIN CALL <span class="arr">&gt;</span></a>
             <span class="alt">or <a href="mailto:hello@nullorder.org">email us</a> · <a href="https://discord.gg/AJMEeFXxXy" target="_blank" rel="noopener">say hi on Discord</a></span>
@@ -722,14 +715,17 @@
         <span>NULL ORDER</span>
         <nav>
           <a href="https://x.com/orderofnull" target="_blank" rel="noopener">X</a>
-          <a href="https://discord.gg/AJMEeFXxXy" target="_blank" rel="noopener">DISCORD</a>
+          <a href="https://discord.gg/AJMEeFXxXy" target="_blank" rel="noopener" aria-label="Discord">
+            <svg viewBox="0 0 127.14 96.36" role="img" aria-hidden="true">
+              <path d="M107.7 8.07A105.15 105.15 0 0 0 81.47 0a72.06 72.06 0 0 0-3.36 6.83 97.68 97.68 0 0 0-29.11 0A72.37 72.37 0 0 0 45.64 0a105.89 105.89 0 0 0-26.25 8.09C2.79 32.65-1.71 56.6.54 80.21a105.73 105.73 0 0 0 32.17 16.15 77.7 77.7 0 0 0 6.89-11.11 68.42 68.42 0 0 1-10.85-5.18c.91-.66 1.8-1.34 2.66-2a75.57 75.57 0 0 0 64.32 0c.87.71 1.76 1.39 2.66 2a68.68 68.68 0 0 1-10.87 5.19 77 77 0 0 0 6.89 11.1 105.25 105.25 0 0 0 32.19-16.14c2.64-27.38-4.51-51.11-18.9-72.15ZM42.45 65.69C36.18 65.69 31 60 31 53s5-12.74 11.43-12.74S54 46 53.89 53s-5.05 12.69-11.44 12.69Zm42.24 0C78.41 65.69 73.25 60 73.25 53s5-12.74 11.44-12.74S96.23 46 96.12 53s-5.04 12.69-11.43 12.69Z" />
+            </svg>
+          </a>
         </nav>
       </footer>
     </div>
 
     <script>
-      // Same flicker-and-settle pixel grid as the home page, scoped to the
-      // hero title. Each lit cell is Pixelspace's own block glyph.
+      // Same flicker-and-settle pixel grid as the home page, scoped to the hero title. Each lit cell is Pixelspace's own block glyph.
       (() => {
         const c = document.getElementById("px");
         const box = c.parentElement;
