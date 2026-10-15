@@ -1,6 +1,6 @@
 # Null Order
 
-An open community for the curious. Source for [nullorder](https://nullorder.github.io) — the landing page and [manifesto](MANIFESTO.md).
+An open community for the curious. Source for [nullorder](https://nullorder.org) — the landing page and [manifesto](MANIFESTO.md).
 
 [![Website](https://img.shields.io/badge/website-nullorder.github.io-111?style=flat-square)](https://nullorder.github.io)
 [![X](https://img.shields.io/badge/X-%40orderofnull-000?style=flat-square&logo=x&logoColor=white)](https://x.com/orderofnull)
