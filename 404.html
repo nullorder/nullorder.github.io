@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>404 · Null Order</title>
+    <meta name="description" content="Not found." />
+    <meta name="robots" content="noindex" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/nullorder.png" />
+    <link rel="preload" href="/fonts/Pixelspace-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <style>
+      @font-face {
+        font-family: "Pixelspace";
+        src: url("/fonts/Pixelspace-Regular.woff2") format("woff2");
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+      :root {
+        --amber: #ffb000;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+        font-family: "Pixelspace", monospace;
+        color: #fff;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      h1 {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+      }
+      .back {
+        position: fixed;
+        left: 50%;
+        top: 78%;
+        transform: translate(-50%, -50%);
+        z-index: 1;
+        color: var(--amber);
+        background: #000;
+        text-decoration: none;
+        font-size: 20px;
+        letter-spacing: 2px;
+        line-height: 1;
+        padding: 12px 16px;
+        white-space: nowrap;
+        opacity: 0;
+        transition: opacity 0.8s ease;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .back.show {
+        opacity: 1;
+      }
+      @media (hover: hover) {
+        .back:hover {
+          opacity: 0.7;
+        }
+      }
+      .back:focus-visible {
+        outline: 2px solid var(--amber);
+        outline-offset: 2px;
+        opacity: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>404. Not Found.</h1>
+    <canvas id="c" aria-hidden="true"></canvas>
+    <a class="back" href="/">&lt; BACK HOME</a>
+    <script>
+      // A random city map, seen from above, fills the grid on every load and
+      // then holds. The cells that spell "404" and "Not Found" light up in
+      // amber on top of it.
+      (() => {
+        const c = document.getElementById("c");
+        const ctx = c.getContext("2d");
+        const off = document.createElement("canvas");
+        const offCtx = off.getContext("2d", { willReadFrequently: true });
+        const back = document.querySelector(".back");
+        const TITLE = "404";
+        const TITLE_SCALE = 2; // each font pixel of the title becomes 2x2 cells
+        const TAGLINE = "Not Found";
+        const CELL_MAX = 10;
+        const CELL_MIN = 4;
+        const MARGIN = 2;
+        const LINK_SPACE = 96; // css px kept under the text for the link
+        const GAP = 4; // empty cell rows between title and tagline
+        const BLOCK_RATIO = 0.78;
+        const DIM = 0.22; // opacity of a text cell while it flickers
+        const AMBER = "#ffb000"; // the text cells, like an old amber terminal
+        const DRAW_MS = 1300; // how long the map takes to draw in
+        const SETTLE_MS = 1300; // max flicker time for a text cell
+        const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+        let W, H, cell, cols, rows, originX, originY, tile, amberTile, textBottom;
+        let text, pattern, revealAt, settleAt, lit, nextFlip, endAt;
+        let blockId, carId, carDx, carDy, carDist, carStart, moving;
+        let seed, style, t0;
+        let raf = 0;
+
+        // Small seeded PRNG so a resize redraws the same pattern.
+        function mulberry32(a) {
+          return () => {
+            a |= 0;
+            a = (a + 0x6d2b79f5) | 0;
+            let t = Math.imul(a ^ (a >>> 15), 1 | a);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+          };
+        }
+        const pick = (r, arr) => arr[Math.floor(r() * arr.length)];
+
+        // Map layers. Each cell holds one, drawn at its own opacity, like a
+        // night-mode map: lit roads, dim buildings, faint water, bright cars.
+        const L = { WATER: 1, RIPPLE: 2, MARK: 3, TREE: 4, BLD: 5, TOWER: 6, LOT: 7, CAR: 8, BOAT: 9, ROAD: 10, AVE: 11 };
+        const ALPHA = [0, 0.05, 0.22, 0.05, 0.16, 0.08, 0.13, 0.06, 0.75, 0.6, 0.24, 0.32];
+        const ROAD_H = 1;
+        const ROAD_V = 2;
+        const RIVER = 4;
+        const AVENUE = 8;
+
+        // A city seen from above: roads split the map into blocks, and each
+        // block becomes buildings, a park, a lake, or a parking lot. A river
+        // crosses some maps. Cars sit on the roads, boats on the water.
+        function city(cols, rows, r) {
+          const g = new Uint8Array(cols * rows);
+          const kind = new Uint8Array(cols * rows);
+          // Which block each cell sits in, and which car (with the way it
+          // drives in) each traffic cell belongs to. The reveals use these.
+          const blockId = new Int32Array(cols * rows);
+          const carId = new Int32Array(cols * rows);
+          const carDx = new Int8Array(cols * rows);
+          const carDy = new Int8Array(cols * rows);
+          const carDist = new Uint8Array(cols * rows);
+          let cars = 0;
+          const inside = (x, y) => x >= 0 && x < cols && y >= 0 && y < rows;
+          const set = (x, y, v) => {
+            if (inside(x, y) && !(kind[y * cols + x] & RIVER)) g[y * cols + x] = v;
+          };
+          const blocks = [];
+          const MIN = 4; // smallest block side, in cells
+          const MAX = 9 + Math.floor(r() * 8); // blocks bigger than this always split
+
+          // Roads by recursive subdivision, so streets end in T junctions like
+          // a real grid. The first cuts are wide avenues with a dashed center.
+          function road(x, y, w, h, dir) {
+            const wide = (dir === ROAD_V ? w : h) === 3 ? AVENUE : 0;
+            for (let yy = y; yy < y + h; yy++)
+              for (let xx = x; xx < x + w; xx++) if (inside(xx, yy)) kind[yy * cols + xx] |= dir | wide;
+            if (dir === ROAD_V && w === 3)
+              for (let yy = y; yy < y + h; yy++) if (yy % 4 < 2) set(x + 1, yy, L.MARK);
+            if (dir === ROAD_H && h === 3)
+              for (let xx = x; xx < x + w; xx++) if (xx % 4 < 2) set(xx, y + 1, L.MARK);
+          }
+          function split(x, y, w, h, depth) {
+            const canV = w >= MIN * 2 + 1;
+            const canH = h >= MIN * 2 + 1;
+            const big = w > MAX || h > MAX;
+            if ((!canV && !canH) || (!big && r() < 0.35)) return blocks.push({ x, y, w, h });
+            const vertical = canV && (!canH || (w > h ? r() < 0.8 : r() < 0.2));
+            const width = depth < 2 && r() < 0.75 ? 3 : 1;
+            const span = vertical ? w : h;
+            if (span < MIN * 2 + width) return blocks.push({ x, y, w, h });
+            const at = MIN + Math.floor(r() * (span - MIN * 2 - width + 1));
+            if (vertical) {
+              road(x + at, y, width, h, ROAD_V);
+              split(x, y, at, h, depth + 1);
+              split(x + at + width, y, w - at - width, h, depth + 1);
+            } else {
+              road(x, y + at, w, width, ROAD_H);
+              split(x, y, w, at, depth + 1);
+              split(x, y + at + width, w, h - at - width, depth + 1);
+            }
+          }
+
+          // The river is laid first, roads cross it on bridges.
+          if (r() < 0.55) {
+            const horiz = r() < 0.5;
+            const len = horiz ? cols : rows;
+            const across = horiz ? rows : cols;
+            const base = across * (0.25 + r() * 0.5);
+            const a1 = across * (0.05 + r() * 0.12);
+            const f1 = (Math.PI * 2 * (0.4 + r())) / len;
+            const p1 = r() * 6.28;
+            const a2 = across * 0.04 * r();
+            const f2 = f1 * (2 + r() * 2);
+            const half = 1.5 + r() * 2;
+            for (let t = 0; t < len; t++) {
+              const mid = base + a1 * Math.sin(t * f1 + p1) + a2 * Math.sin(t * f2);
+              for (let k = Math.floor(mid - half); k <= Math.ceil(mid + half); k++) {
+                const x = horiz ? t : k;
+                const y = horiz ? k : t;
+                if (inside(x, y)) kind[y * cols + x] |= RIVER;
+              }
+            }
+          }
+
+          // Start past the edges so the map reads as part of a bigger city.
+          split(-3, -3, cols + 6, rows + 6, 0);
+
+          // Bridges: road cells over the river stay road.
+          for (let i = 0; i < kind.length; i++) if (kind[i] & (ROAD_H | ROAD_V)) kind[i] &= ~RIVER;
+
+          function water(x, y) {
+            if (!inside(x, y)) return;
+            const i = y * cols + x;
+            if (kind[i] & (ROAD_H | ROAD_V)) return;
+            g[i] = y % 2 === 0 && (x + Math.floor(y / 2) * 3) % 5 < 3 ? L.RIPPLE : L.WATER;
+          }
+          for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) if (kind[y * cols + x] & RIVER) water(x, y);
+
+          function trees(b, density) {
+            for (let y = b.y; y < b.y + b.h; y++)
+              for (let x = b.x; x < b.x + b.w; x++) if ((x + y) % 2 === 0 && r() < density * 2) set(x, y, L.TREE);
+          }
+          function pond(b, inset) {
+            const cx = b.x + b.w / 2 - 0.5;
+            const cy = b.y + b.h / 2 - 0.5;
+            const rx = b.w / 2 - inset;
+            const ry = b.h / 2 - inset;
+            const cells = [];
+            for (let y = b.y; y < b.y + b.h; y++)
+              for (let x = b.x; x < b.x + b.w; x++)
+                if (((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1) {
+                  if (inside(x, y)) g[y * cols + x] = 0;
+                  water(x, y);
+                  cells.push([x, y]);
+                }
+            return cells;
+          }
+          function lots(b) {
+            // Split a block into buildings with one-cell alleys between them.
+            const canV = b.w >= 5;
+            const canH = b.h >= 5;
+            if ((!canV && !canH) || (b.w <= 6 && b.h <= 6 && r() < 0.5)) {
+              const roll = r();
+              if (roll < 0.08) return trees(b, 0.3); // a small garden
+              const v = roll < 0.3 ? L.TOWER : L.BLD;
+              const court = b.w >= 5 && b.h >= 5 && r() < 0.4;
+              for (let y = b.y; y < b.y + b.h; y++)
+                for (let x = b.x; x < b.x + b.w; x++) {
+                  const edge = x === b.x || y === b.y || x === b.x + b.w - 1 || y === b.y + b.h - 1;
+                  if (!court || edge) set(x, y, v);
+                }
+              return;
+            }
+            const vertical = canV && (!canH || r() < b.w / (b.w + b.h));
+            const span = vertical ? b.w : b.h;
+            const at = 2 + Math.floor(r() * (span - 4));
+            if (vertical) {
+              lots({ x: b.x, y: b.y, w: at, h: b.h });
+              lots({ x: b.x + at + 1, y: b.y, w: b.w - at - 1, h: b.h });
+            } else {
+              lots({ x: b.x, y: b.y, w: b.w, h: at });
+              lots({ x: b.x, y: b.y + at + 1, w: b.w, h: b.h - at - 1 });
+            }
+          }
+
+          for (const b of blocks) {
+            const roll = r();
+            const roomy = b.w >= 6 && b.h >= 6;
+            if (roll < 0.15) {
+              trees(b, 0.32);
+              // Footpaths through the middle.
+              const mx = b.x + Math.floor(b.w / 2);
+              const my = b.y + Math.floor(b.h / 2);
+              for (let y = b.y; y < b.y + b.h; y++) set(mx, y, 0);
+              for (let x = b.x; x < b.x + b.w; x++) set(x, my, 0);
+              if (roomy && r() < 0.4) pond({ x: b.x + 1, y: b.y + 1, w: Math.floor(b.w / 2) - 1, h: Math.floor(b.h / 2) - 1 }, 0);
+            } else if (roll < 0.23 && roomy) {
+              trees(b, 0.3);
+              const cells = pond(b, 1);
+              if (cells.length && r() < 0.6) {
+                const [x, y] = pick(r, cells);
+                set(x, y, L.BOAT);
+              }
+            } else if (roll < 0.28) {
+              // Parking lot: rows of stalls with an aisle every third row.
+              for (let y = b.y; y < b.y + b.h; y++) {
+                if ((y - b.y) % 3 === 1) continue;
+                for (let x = b.x; x < b.x + b.w; x++) set(x, y, (x - b.x) % 2 === 0 ? L.LOT : r() < 0.45 ? L.CAR : 0);
+              }
+            } else {
+              lots(b);
+            }
+          }
+
+          // Traffic: two-cell cars and the odd three-cell bus, driving in lanes.
+          for (let y = 0; y < rows; y++)
+            for (let x = 0; x < cols; x++) {
+              const k = kind[y * cols + x] & (ROAD_H | ROAD_V);
+              const lane = kind[y * cols + x] & (ROAD_H | ROAD_V | AVENUE);
+              if ((k !== ROAD_H && k !== ROAD_V) || g[y * cols + x] || r() > 0.035) continue;
+              const len = r() < 0.12 ? 3 : 2;
+              const dx = k === ROAD_H ? 1 : 0;
+              const dy = 1 - dx;
+              let ok = true;
+              for (let n = 0; n < len + 1 && ok; n++) {
+                const xx = x + dx * n;
+                const yy = y + dy * n;
+                ok = inside(xx, yy) && kind[yy * cols + xx] === lane && !g[yy * cols + xx];
+              }
+              if (!ok) continue;
+              cars++;
+              const sign = r() < 0.5 ? 1 : -1;
+              const dist = 6 + Math.floor(r() * 18);
+              for (let n = 0; n < len; n++) {
+                const i = (y + dy * n) * cols + x + dx * n;
+                g[i] = L.CAR;
+                carId[i] = cars;
+                carDx[i] = dx * sign;
+                carDy[i] = dy * sign;
+                carDist[i] = dist;
+              }
+            }
+
+          // Light up the road surface last, under the cars and lane marks.
+          for (let i = 0; i < g.length; i++)
+            if (!g[i] && kind[i] & (ROAD_H | ROAD_V)) g[i] = kind[i] & AVENUE ? L.AVE : L.ROAD;
+
+          // A few boats on the river.
+          for (let i = 0; i < g.length; i++)
+            if (kind[i] & RIVER && g[i] === L.WATER && r() < 0.006) g[i] = L.BOAT;
+
+          blocks.forEach((b, n) => {
+            for (let y = Math.max(0, b.y); y < Math.min(rows, b.y + b.h); y++)
+              for (let x = Math.max(0, b.x); x < Math.min(cols, b.x + b.w); x++)
+                if (!(kind[y * cols + x] & RIVER)) blockId[y * cols + x] = n + 1;
+          });
+
+          return { g, blockId, carId, carDx, carDy, carDist };
+        }
+        // How the map appears: cells settling in like static, streets first
+        // then blocks then cars, or traffic driving in.
+        const STYLES = ["dissolve", "roads", "traffic"];
+        const CAR_MS = 700; // how long a car takes to drive into place
+
+        // Render text in Pixelspace at its native 7px grid and read it back
+        // as a tight 0/1 bitmap.
+        function sample(str) {
+          const SIZE = 7;
+          const PAD = 2;
+          offCtx.font = SIZE + "px 'Pixelspace', monospace";
+          const pw = Math.ceil(offCtx.measureText(str).width) + PAD * 2;
+          const ph = SIZE * 2 + PAD * 2;
+          off.width = pw;
+          off.height = ph;
+          offCtx.fillStyle = "#000";
+          offCtx.fillRect(0, 0, pw, ph);
+          offCtx.fillStyle = "#fff";
+          offCtx.font = SIZE + "px 'Pixelspace', monospace";
+          offCtx.textBaseline = "top";
+          offCtx.fillText(str, PAD, PAD);
+          const data = offCtx.getImageData(0, 0, pw, ph).data;
+          let minX = pw,
+            maxX = -1,
+            minY = ph,
+            maxY = -1;
+          for (let y = 0; y < ph; y++)
+            for (let x = 0; x < pw; x++)
+              if (data[(y * pw + x) * 4] > 96) {
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+              }
+          if (maxX < 0) return { w: 0, h: 0, bits: new Uint8Array(0) };
+          const w = maxX - minX + 1;
+          const h = maxY - minY + 1;
+          const bits = new Uint8Array(w * h);
+          for (let y = 0; y < h; y++)
+            for (let x = 0; x < w; x++) bits[y * w + x] = data[((y + minY) * pw + (x + minX)) * 4] > 96 ? 1 : 0;
+          return { w, h, bits };
+        }
+
+        function scale(bm, k) {
+          const w = bm.w * k;
+          const h = bm.h * k;
+          const bits = new Uint8Array(w * h);
+          for (let y = 0; y < h; y++)
+            for (let x = 0; x < w; x++) bits[y * w + x] = bm.bits[Math.floor(y / k) * bm.w + Math.floor(x / k)];
+          return { w, h, bits };
+        }
+
+        function stamp(bm, row) {
+          const col = Math.floor((cols - bm.w) / 2);
+          for (let y = 0; y < bm.h; y++)
+            for (let x = 0; x < bm.w; x++) {
+              const gx = col + x;
+              const gy = row + y;
+              if (gx < 0 || gx >= cols || gy < 0 || gy >= rows) continue;
+              if (bm.bits[y * bm.w + x]) text[gy * cols + gx] = 1;
+            }
+        }
+
+        // Largest cell size where the text and the link both fit.
+        function chooseCell(title, tag) {
+          const h = title.h + GAP + tag.h;
+          for (let s = CELL_MAX; s >= CELL_MIN; s--) {
+            const maxW = Math.floor(W / s) - MARGIN * 2;
+            if (Math.max(title.w, tag.w) <= maxW && (h + MARGIN) * s + LINK_SPACE <= H) return s;
+          }
+          return CELL_MIN;
+        }
+
+        // See index.html: the block glyph's ink box stretched to a square tile.
+        function buildTile(color) {
+          const dpr = devicePixelRatio || 1;
+          const px = Math.max(1, Math.round(Math.floor(cell * BLOCK_RATIO) * dpr));
+          const t = document.createElement("canvas");
+          t.width = t.height = px;
+          const g = t.getContext("2d");
+          const EM = 875;
+          const FS = 100;
+          const inkW = (610 * FS) / EM;
+          const inkH = (860 * FS) / EM;
+          const top = (625 * FS) / EM;
+          g.font = FS + "px 'Pixelspace', monospace";
+          g.fillStyle = color;
+          g.setTransform(px / inkW, 0, 0, px / inkH, 0, 0);
+          g.fillText("█", 0, top);
+          return t;
+        }
+
+        function revealTime(i, x, y, r, sweep, blockTime) {
+          const v = pattern[i];
+          const road = v === L.ROAD || v === L.AVE || v === L.MARK || carId[i] > 0;
+          if (text[i] && style !== "dissolve") return sweep * DRAW_MS;
+          switch (style) {
+            case "roads":
+              return road || !blockId[i] ? sweep * DRAW_MS * 0.5 : blockTime(blockId[i], 0.45, 0.95);
+            case "traffic":
+              return 0;
+            default:
+              return r() * DRAW_MS;
+          }
+        }
+
+        // `reroll` picks the seed and plays the draw-in (only on load). A
+        // resize keeps the seed and redraws at once.
+        function init(reroll) {
+          if (reroll) {
+            seed = (Math.random() * 2 ** 32) >>> 0;
+            style = STYLES[Math.floor(Math.random() * STYLES.length)];
+          }
+          const dpr = devicePixelRatio || 1;
+          W = innerWidth;
+          H = innerHeight;
+          c.width = W * dpr;
+          c.height = H * dpr;
+          c.style.width = W + "px";
+          c.style.height = H + "px";
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+          const title = scale(sample(TITLE), TITLE_SCALE);
+          const tag = sample(TAGLINE);
+          cell = chooseCell(title, tag);
+          tile = buildTile("#fff");
+          amberTile = buildTile(AMBER);
+          cols = Math.floor(W / cell);
+          rows = Math.floor(H / cell);
+          originX = (W - cols * cell) / 2;
+          originY = (H - rows * cell) / 2;
+
+          // Center the text block around 45% from the top, keeping room for the link.
+          text = new Uint8Array(cols * rows);
+          const blockH = title.h + GAP + tag.h;
+          const maxRow = Math.floor((H - originY - LINK_SPACE) / cell) - blockH;
+          let row = Math.max(Math.min(MARGIN, Math.max(0, maxRow)), Math.min(maxRow, Math.floor(rows * 0.45 - blockH / 2)));
+          stamp(title, row);
+          stamp(tag, row + title.h + GAP);
+          textBottom = originY + (row + blockH) * cell;
+          back.style.top = (textBottom + H) / 2 + "px";
+
+          // The map, cleared one cell around each letter so the text reads.
+          const r = mulberry32(seed);
+          const map = city(cols, rows, r);
+          ({ blockId, carId, carDx, carDy, carDist } = map);
+          pattern = map.g;
+          for (let y = 0; y < rows; y++)
+            for (let x = 0; x < cols; x++) {
+              if (!text[y * cols + x]) continue;
+              for (let dy = -1; dy <= 1; dy++)
+                for (let dx = -1; dx <= 1; dx++) {
+                  const yy = y + dy;
+                  const xx = x + dx;
+                  if (yy >= 0 && yy < rows && xx >= 0 && xx < cols && !text[yy * cols + xx]) pattern[yy * cols + xx] = 0;
+                }
+            }
+
+          const tr = mulberry32(seed ^ 0x9e3779b9);
+          const ox = tr() * cols;
+          const oy = tr() * rows;
+          const far = Math.hypot(cols, rows);
+          // Every cell of a block (or a car) shares one start time.
+          const blockAt = new Map();
+          const blockTime = (id, lo, hi) => {
+            if (!blockAt.has(id)) blockAt.set(id, DRAW_MS * (lo + tr() * (hi - lo)));
+            return blockAt.get(id);
+          };
+          const carAt = new Map();
+          moving = style === "roads" || style === "traffic";
+          revealAt = new Float32Array(cols * rows);
+          settleAt = new Float32Array(cols * rows);
+          carStart = new Float32Array(cols * rows);
+          lit = new Uint8Array(cols * rows);
+          nextFlip = new Float32Array(cols * rows);
+          endAt = DRAW_MS * 1.4;
+          for (let y = 0; y < rows; y++)
+            for (let x = 0; x < cols; x++) {
+              const i = y * cols + x;
+              revealAt[i] = revealTime(i, x, y, tr, Math.hypot(x - ox, y - oy) / far, blockTime);
+              endAt = Math.max(endAt, revealAt[i]);
+              if (text[i]) {
+                settleAt[i] = revealAt[i] + 250 + tr() * SETTLE_MS;
+                endAt = Math.max(endAt, settleAt[i]);
+              }
+              if (moving && carId[i] && pattern[i] === L.CAR) {
+                const id = carId[i];
+                if (!carAt.has(id)) carAt.set(id, style === "roads" ? DRAW_MS * (1 + tr() * 0.4) : tr() * DRAW_MS * 0.9);
+                carStart[i] = carAt.get(id);
+                endAt = Math.max(endAt, carStart[i] + CAR_MS);
+              }
+            }
+
+          if (reroll && !still) {
+            back.classList.remove("show");
+            t0 = performance.now();
+            if (!raf) raf = requestAnimationFrame(frame);
+          } else {
+            t0 = performance.now() - endAt;
+            draw(Infinity, 0);
+            back.classList.add("show");
+          }
+        }
+
+        function draw(e, now) {
+          ctx.fillStyle = "#000";
+          ctx.fillRect(0, 0, W, H);
+          const block = Math.floor(cell * BLOCK_RATIO);
+          const inset = Math.floor((cell - block) / 2);
+          const putXY = (x, y, t = tile) => ctx.drawImage(t, originX + x * cell + inset, originY + y * cell + inset, block, block);
+          const put = (i, t = tile) => putXY(i % cols, Math.floor(i / cols), t);
+          const bright = [];
+          const driving = [];
+          for (let i = 0; i < pattern.length; i++) {
+            if (e < revealAt[i]) continue;
+            if (text[i]) {
+              if (e >= settleAt[i]) bright.push(i);
+              else {
+                // Flicker between dim and bright until it locks in.
+                if (now >= nextFlip[i]) {
+                  lit[i] = Math.random() < 0.5 ? 1 : 0;
+                  nextFlip[i] = now + 60 + Math.random() * 120;
+                }
+                if (lit[i]) bright.push(i);
+                else {
+                  ctx.globalAlpha = DIM;
+                  put(i, amberTile);
+                }
+              }
+            } else {
+              const v = pattern[i];
+              if (moving && carId[i] && v === L.CAR) {
+                // The road shows until the car pulls in on top of it.
+                ctx.globalAlpha = ALPHA[L.ROAD];
+                put(i);
+                if (e >= carStart[i]) driving.push(i);
+                continue;
+              }
+              if (ALPHA[v]) {
+                ctx.globalAlpha = ALPHA[v];
+                put(i);
+              }
+            }
+          }
+          ctx.globalAlpha = ALPHA[L.CAR];
+          for (const i of driving) {
+            const p = Math.min(1, (e - carStart[i]) / CAR_MS);
+            const lag = Math.round(carDist[i] * (1 - p) ** 3); // eases to a stop
+            const x = (i % cols) - carDx[i] * lag;
+            const y = Math.floor(i / cols) - carDy[i] * lag;
+            if (x >= 0 && x < cols && y >= 0 && y < rows && !text[y * cols + x]) putXY(x, y);
+          }
+          ctx.globalAlpha = 1;
+          for (const i of bright) put(i, amberTile);
+        }
+
+        function frame(now) {
+          const e = now - t0;
+          draw(e, now);
+          if (e >= endAt) {
+            raf = 0;
+            back.classList.add("show");
+            return;
+          }
+          raf = requestAnimationFrame(frame);
+        }
+
+        let resizeTimer;
+        addEventListener("resize", () => {
+          clearTimeout(resizeTimer);
+          if (seed === undefined) return;
+          resizeTimer = setTimeout(() => {
+            cancelAnimationFrame(raf);
+            raf = 0;
+            init(false);
+          }, 100);
+        });
+        document.fonts.load("7px 'Pixelspace'").then(() => init(true));
+      })();
+    </script>
+  </body>
+</html>
